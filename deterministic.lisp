@@ -22,10 +22,6 @@
 
 (defmethod deterministic-p ((a dfa)) t)
 
-(defmethod initialize-instance :after ((a dfa) &key)
-  (unless (deterministic-p (get-transition-table a))
-    (warn "Non-deterministic transition table for a deterministic automaton")))
-
 (defmethod extended-delta ((a dfa) state (string list))
   (typecase state
     (list (if string

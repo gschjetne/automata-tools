@@ -26,5 +26,19 @@
   (loop for x in l1
         append (loop for y in l2 collect (cons x y))))
 
+;; Todo: Remove combine-states in favour of the more general combined-state
 (defun combine-states (s1 s2)
-  (intern (format nil "~A,~A" s1 s2)))
+  (when s1
+    (when s2
+      (intern (format nil "~A,~A" s1 s2)))))
+
+(defun combined-state (set)
+  (if set
+      (intern (format nil "~{~A~^,~}" (sort (remove-duplicates set) #'multi-lessp)))
+      nil))
+
+(defun powerset (set)
+  (if set
+      (loop for x in (powerset (cdr set))
+            append (list (cons (car set) x) x))
+      (list nil)))

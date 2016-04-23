@@ -18,11 +18,12 @@
 
 (in-package #:automata-tools)
 
-(defgeneric render-diagram (automaton outfile &key format prune))
+(defgeneric render-diagram (automaton outfile &key format prune attributes))
 
-(defmethod render-diagram ((a automaton) outfile &key format prune)
+(defmethod render-diagram ((a automaton) outfile &key format prune attributes)
   (dot-graph (generate-graph-from-roots a (cons :start (unless prune
-                                                         (get-states a))))
+                                                         (get-states a)))
+                                        attributes)
              outfile
              :format format
              :directed t))
@@ -33,16 +34,40 @@
 (defmethod graph-object-points-to ((a automaton) (state (eql :start)))
   (list (get-initial-state a)))
 
-(defgeneric latex-transition-table (automaton outfile))
+(defmethod graph-object-node ((a automaton) state)
+  (make-instance 'node
+                 :attributes `(:label ,(write-to-string state :escape nil)
+                               :shape ,(if (find state
+                                                 (get-accepting-states a))
+                                           :doublecircle
+                                           :circle)
+                               :style :filled
+                               :fillcolor ,(if (find state
+                                                     (get-current-states a))
+                                               "#ffff00"
+                                               "#ffffff"))))
 
-(defmethod latex-transition-table ((a automaton) outfile)
+(defmethod graph-object-points-to ((a automaton) state)
+  (flet ((label (symbol state)
+           (make-instance 'attributed
+                          :object state
+                          :attributes `(:label ,(write-to-string symbol)))))
+    (loop for symbol in (get-alphabet a)
+          append (loop for destination in (delta a state symbol)
+                       collect (label symbol destination)))))
+
+(defgeneric latex-transition-table (automaton outfile &key prune))
+
+(defmethod latex-transition-table ((a automaton) outfile &key prune)
   (with-open-file (f outfile :direction :output :if-exists :supersede)
-    (let ((alphabet (sort (get-alphabet a) #'multi-lessp))
-          (states (sort (get-states a) #'multi-lessp))
-          (initial-state (get-initial-state a))
-          (accepting-states (get-accepting-states a)))
+    (let* ((alphabet (get-alphabet a))
+           (initial-state (get-initial-state a))
+           (states (if prune
+                       (get-accessible-states a initial-state)
+                       (get-states a)))
+           (accepting-states (get-accepting-states a)))
       (format f "\\begin{tabular}{ r |~{| c ~*~}}~%" alphabet)
-      (format f "  $\\delta$ ~{& ~A ~}\\\\~%  \\hline~%" alphabet)
+      (format f "  ~{& ~A ~}\\\\~%  \\hline~%" alphabet)
       (if (deterministic-p a)
           (dolist (state states)
             (format f "  $~:[~;\\rightarrow~] ~:[~;*~] ~A$ ~{& $~:[-~;~:*~A~]$ ~}\\\\~%"
@@ -51,5 +76,11 @@
                     state
                     (mapcar (lambda (symbol) (car (delta a state symbol)))
                             alphabet)))
-          (error "Not yet implemented"))
+          (dolist (state states)
+            (format f "  $~:[~;\\rightarrow~] ~:[~;*~] ~A$ ~{& $~:[-~;~:*\\{~{~A~^, ~}\\}~]$ ~}\\\\~%"
+                    (eql state initial-state)
+                    (find state accepting-states)
+                    state
+                    (mapcar (lambda (symbol) (delta a state symbol))
+                            alphabet))))
       (format f "\\end{tabular}~%"))))

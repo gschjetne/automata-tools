@@ -26,8 +26,11 @@
                   :initarg :initial-state)
    (accepting-states :reader get-accepting-states
                      :initarg :accepting-states)
-   (transitions :reader get-transition-table
-                :initarg :transitions)))
+   (alphabet :reader get-alphabet
+             :initarg :alphabet)))
+
+(defmethod initialize-instance :after ((a automaton) &key)
+  (reset-automaton a))
 
 (defgeneric accepting-p (automaton))
 
@@ -39,26 +42,6 @@
 
 (defmethod reset-automaton ((a automaton))
   (setf (get-current-states a) (list (get-initial-state a))))
-
-(defun compile-delta (a)
-  (let ((alphabet (get-alphabet a))
-        (transitions (get-transition-table a)))
-    (dolist (state (get-states a))
-      (dolist (symbol alphabet)
-        (eval
-         `(defmethod delta ((a (eql ,a)) (state (eql (quote ,state)))
-                            (symbol (eql (quote ,symbol))))
-            (quote ,(reduce #'append
-                            (mapcar #'cdr
-                                    (remove-if-not (lambda (c) (eql c symbol))
-                                                   (cdr (find state
-                                                              transitions
-                                                              :key #'car))
-                                                   :key #'car))))))))))
-
-(defmethod initialize-instance :after ((a automaton) &key)
-  (reset-automaton a)
-  (compile-delta a))
 
 (defgeneric deterministic-p (automaton-or-transitions))
 
@@ -73,53 +56,42 @@
              (deterministic-p (cdr transitions)))
         t)))
 
-(defmethod graph-object-node ((a automaton) state)
-  (make-instance 'node
-                 :attributes `(:label ,(write-to-string state :escape nil)
-                               :shape ,(if (find state
-                                                 (get-accepting-states a))
-                                           :doubleoctagon
-                                           :circle)
-                               :style :filled
-                               :fillcolor ,(if (find state
-                                                     (get-current-states a))
-                                               "#ffff00"
-                                               "#ffffff"))))
-
-(defmethod graph-object-points-to ((a automaton) state)
-  (flet ((symbol-to-graph-edge (state symbol)
-           (make-instance 'attributed
-                 :object state
-                 :attributes `(:label ,(write-to-string symbol)))))
-    (loop for mapping in (cdr (find state (get-transition-table a) :key #'car))
-          append (loop with symbol = (car mapping)
-                       for destination in (cdr mapping)
-                       collect (symbol-to-graph-edge destination symbol)))))
-
 (defun states-in-table (transition-table)
-  (remove-duplicates
-   (loop for row in transition-table
-         append (cons (car row)
-                      (reduce #'append
-                              (mapcar #'cdr (cdr row)))))))
+  (remove-if-not #'identity
+   (remove-duplicates
+    (loop for row in transition-table
+          append (cons (car row)
+                       (reduce #'append
+                               (mapcar #'cdr (cdr row))))))))
 
-(defun make-automaton (type transition-table initial-state accepting-states
+(defun make-automaton (type transitions initial-state accepting-states
                        &key additional-states)
-  (make-instance type
-                 :states (union (states-in-table transition-table)
-                                additional-states)
-                 :transitions transition-table
-                 :initial-state initial-state
-                 :accepting-states accepting-states))
-
-(defgeneric get-alphabet (automaton))
-
-(defmethod get-alphabet ((a automaton))
-  (remove-duplicates
-   (mapcar #'car
-           (reduce #'append
-                   (mapcar #'cdr
-                           (get-transition-table a))))))
+  (let* ((alphabet (sort (remove-duplicates
+                          (mapcar #'car
+                                  (reduce #'append
+                                          (mapcar #'cdr
+                                                  transitions))))
+                         #'multi-lessp))
+         (automaton (make-instance type
+                                   :states (sort (union (states-in-table transitions)
+                                                        additional-states)
+                                                 #'multi-lessp)
+                                   :initial-state initial-state
+                                   :accepting-states accepting-states
+                                   :alphabet alphabet)))
+    (dolist (state (get-states automaton))
+      (dolist (symbol alphabet)
+        (eval
+         `(defmethod delta ((a (eql ,automaton)) (state (eql (quote ,state)))
+                            (symbol (eql (quote ,symbol))))
+            (quote ,(reduce #'append
+                            (mapcar #'cdr
+                                    (remove-if-not (lambda (c) (eql c symbol))
+                                                   (cdr (find state
+                                                              transitions
+                                                              :key #'car))
+                                                   :key #'car))))))))
+    automaton))
 
 (defgeneric delta (automaton state symbol))
 
