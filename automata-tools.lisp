@@ -27,7 +27,9 @@
    (accepting-states :reader get-accepting-states
                      :initarg :accepting-states)
    (alphabet :reader get-alphabet
-             :initarg :alphabet)))
+             :initarg :alphabet)
+   (delta :reader get-delta-function
+          :initarg :delta)))
 
 (defmethod initialize-instance :after ((a automaton) &key)
   (reset-automaton a))
@@ -64,36 +66,50 @@
                        (reduce #'append
                                (mapcar #'cdr (cdr row))))))))
 
+(defun find-transitions (transitions state symbol)
+  (reduce #'append
+          (mapcar #'cdr
+                  (remove-if-not (lambda (c) (eql c symbol))
+                                 (cdr (find state
+                                            transitions
+                                            :key #'car))
+                                 :key #'car))))
+
+(defun compile-transitions (states alphabet transitions)
+  (eval
+   `(lambda (state symbol)
+      (case state
+        ,@(loop for state in states
+                collect
+                `(,state (case symbol
+                           ,@(loop for symbol in alphabet
+                                   collect `(,symbol
+                                             (quote ,(find-transitions
+                                                      transitions state symbol))))
+                           (otherwise nil))))
+        (otherwise nil)))))
+
 (defun make-automaton (type transitions initial-state accepting-states
                        &key additional-states)
-  (let* ((alphabet (sort (remove-duplicates
-                          (mapcar #'car
+  (let ((alphabet (sort (remove-duplicates
+                         (mapcar #'car
                                   (reduce #'append
                                           (mapcar #'cdr
                                                   transitions))))
-                         #'multi-lessp))
-         (automaton (make-instance type
-                                   :states (sort (union (states-in-table transitions)
-                                                        additional-states)
-                                                 #'multi-lessp)
-                                   :initial-state initial-state
-                                   :accepting-states accepting-states
-                                   :alphabet alphabet)))
-    (dolist (state (get-states automaton))
-      (dolist (symbol alphabet)
-        (eval
-         `(defmethod delta ((a (eql ,automaton)) (state (eql (quote ,state)))
-                            (symbol (eql (quote ,symbol))))
-            (quote ,(reduce #'append
-                            (mapcar #'cdr
-                                    (remove-if-not (lambda (c) (eql c symbol))
-                                                   (cdr (find state
-                                                              transitions
-                                                              :key #'car))
-                                                   :key #'car))))))))
-    automaton))
+                        #'multi-lessp))
+        (states (states-in-table transitions)))
+    (make-instance type
+                   :states (sort (union states additional-states)
+                                 #'multi-lessp)
+                   :initial-state initial-state
+                   :accepting-states accepting-states
+                   :alphabet alphabet
+                   :delta (compile-transitions states alphabet transitions))))
 
 (defgeneric delta (automaton state symbol))
+
+(defmethod delta ((a automaton) state symbol)
+  (funcall (get-delta-function a) state symbol))
 
 (defgeneric extended-delta (automaton state string))
 
