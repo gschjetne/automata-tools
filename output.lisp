@@ -77,7 +77,7 @@
                     (mapcar (lambda (symbol) (car (delta a state symbol)))
                             alphabet)))
           (dolist (state states)
-            (format f "  $~:[~;\\rightarrow~] ~:[~;*~] ~A$ ~{& $~:[-~;~:*\\{~{~A~^, ~}\\}~]$ ~}\\\\~%"
+            (format f "  $~:[~;\\rightarrow~] ~:[~;*~] ~A$ ~{& $~:[\\emptyset~;~:*\\{~{~A~^, ~}\\}~]$ ~}\\\\~%"
                     (eql state initial-state)
                     (find state accepting-states)
                     state
