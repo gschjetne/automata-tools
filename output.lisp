@@ -51,7 +51,7 @@
   (flet ((label (symbol state)
            (make-instance 'attributed
                           :object state
-                          :attributes `(:label ,(write-to-string symbol)))))
+                          :attributes `(:label ,(write-to-string symbol :escape nil)))))
     (loop for symbol in (get-alphabet a)
           append (loop for destination in (delta a state symbol)
                        collect (label symbol destination)))))
